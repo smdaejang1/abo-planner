@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <!-- 7가지 습관 나침반 계획표 — v4 (저장 키: 7hp-v4) -->
 <html lang="ko">
@@ -188,6 +189,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#eef3f0;color:var(--g9);pa
 
 /* 드래그 핸들 강화 */
 .drag-chip{display:inline-flex;align-items:center;gap:3px;padding:4px 7px;border-radius:5px;font-size:11px;font-weight:600;line-height:1.4;margin:1px;border:1px solid transparent;cursor:grab;touch-action:none}
+.drag-chip.consumer-chip{border-left:3px solid #2e7d32 !important;}
 .drag-chip:active{cursor:grabbing;opacity:.8;transform:scale(.97)}
 .drag-chip .dh-icon{font-size:9px;color:rgba(0,0,0,.25);flex-shrink:0;pointer-events:none}
 .drag-chip .cx{opacity:0;background:none;border:none;padding:0;font-size:11px;cursor:pointer;line-height:1}
@@ -404,6 +406,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#eef3f0;color:var(--g9);pa
     <button class="btn btn-p" style="font-size:12px;padding:7px 12px" onclick="saveNow()">💾 저장</button>
     <button class="btn" style="font-size:12px;padding:7px 12px" onclick="exportData()">📤 내보내기</button>
     <label class="btn" style="font-size:12px;padding:7px 12px;cursor:pointer">📥 불러오기<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label>
+    <label class="btn" style="font-size:12px;padding:7px 12px;cursor:pointer;background:#e8f5e9;color:#2e7d32;border:1px solid #2e7d32;">📋 관리노트 가져오기<input type="file" accept=".json" style="display:none" onchange="importManageNote(this)"></label>
     <button class="btn" style="font-size:12px;padding:7px 12px" onclick="window.print()">🖨 인쇄</button>
   </div>
 </div>
@@ -517,6 +520,125 @@ function importData(input){
   reader.readAsText(file);
 }
 setInterval(()=>{if(document.querySelector('.sdot.unsaved'))saveNow();},30000);
+
+
+// ── 관리노트 가져오기 (소비자/사업자 자동 감지) ─────────
+function importManageNote(input){
+  const file=input.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=(e)=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(data.fromConsumerNote) importConsumerNoteData(data);
+      else if(data.fromBizNote) importBizNoteData(data);
+      else throw new Error('소비자/사업자 관리 노트 내보내기 파일이 아닙니다.');
+    }catch(err){ alert('오류: '+err.message); }
+    input.value='';
+  };
+  reader.readAsText(file);
+}
+
+function importBizNoteData(data){
+  if(!data.fromBizNote||!data.followUps) throw new Error('사업자 관리 노트 파일이 아닙니다.');
+  const followUps=data.followUps||[];
+  if(followUps.length===0){ alert('가져올 일정이 없습니다.'); return; }
+  let role=S.roles.find(r=>r.name==='파트너관리');
+  if(!role){ role={id:'biz_note_role',ci:4,name:'파트너관리',targets:[]}; S.roles.push(role); }
+  let added=0, skipped=0;
+  followUps.forEach(function(fu){
+    const ds=fu.date; if(!ds||ds.length!==10){skipped++;return;}
+    const m=md(ds.slice(0,7));
+    if(!m.calItems[ds]) m.calItems[ds]=[];
+    if(m.calItems[ds].find(function(x){return x.text===fu.text&&x.fromBiz;})){skipped++;return;}
+    m.calItems[ds].push({
+      id:'bn_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+      text:fu.text, roleId:role.id, src:'biz',
+      fromBiz:true, bizType:fu.type||'',
+      pin:fu.pin||'', leg:fu.leg||'',
+      what:fu.what||'', why:fu.why||'', how:fu.how||''
+    });
+    added++;
+  });
+  saveNow(); render();
+  alert('사업자 노트 가져오기 완료! 추가: '+added+'건 / 중복: '+skipped+'건');
+}
+
+function importConsumerNoteData(data){
+  if(!data.fromConsumerNote||!data.followUps) throw new Error('소비자 관리 노트 파일이 아닙니다.');
+  const followUps=data.followUps||[];
+  if(followUps.length===0){ alert('가져올 일정이 없습니다.'); return; }
+  let role=S.roles.find(r=>r.name==='소비자관리');
+  if(!role){ role={id:'consumer_note_role',ci:6,name:'소비자관리',targets:[]}; S.roles.push(role); }
+  let added=0, skipped=0;
+  followUps.forEach(function(fu){
+    const ds=fu.date; if(!ds||ds.length!==10){skipped++;return;}
+    const m=md(ds.slice(0,7));
+    if(!m.calItems[ds]) m.calItems[ds]=[];
+    if(m.calItems[ds].find(function(x){return x.text===fu.text&&x.fromConsumer;})){skipped++;return;}
+    m.calItems[ds].push({
+      id:'cn_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+      text:fu.text, roleId:role.id, src:'consumer',
+      fromConsumer:true, consumerType:fu.type||'',
+      what:fu.what||'', why:fu.why||'', how:fu.how||''
+    });
+    added++;
+  });
+  saveNow(); render();
+  alert('소비자 노트 가져오기 완료! 추가: '+added+'건 / 중복: '+skipped+'건');
+}
+
+function importConsumerNote(input){
+  const file=input.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=(e)=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      // 소비자 노트 내보내기 파일인지 확인
+      if(!data.fromConsumerNote||!data.followUps)
+        throw new Error('소비자 관리 노트 내보내기 파일이 아닙니다.');
+      const followUps=data.followUps||[];
+      if(followUps.length===0){
+        alert('가져올 일정이 없습니다.');
+        input.value=''; return;
+      }
+      // 역할 중 소비자노트 역할 찾거나 생성
+      let consumerRole=S.roles.find(r=>r.name==='소비자관리');
+      if(!consumerRole){
+        consumerRole={id:'consumer_note_role',ci:6,name:'소비자관리',targets:[]};
+        S.roles.push(consumerRole);
+      }
+      let added=0, skipped=0;
+      followUps.forEach(fu=>{
+        const ds=fu.date; // YYYY-MM-DD
+        if(!ds||ds.length!==10){skipped++; return;}
+        const mk=ds.slice(0,7); // YYYY-MM
+        const m=md(mk);
+        if(!m.calItems[ds]) m.calItems[ds]=[];
+        // 중복 체크
+        const exists=m.calItems[ds].find(x=>x.text===fu.text&&x.fromConsumer);
+        if(exists){skipped++; return;}
+        m.calItems[ds].push({
+          id:'cn_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+          text:fu.text,
+          roleId:consumerRole.id,
+          src:'consumer',
+          fromConsumer:true,
+          consumerType:fu.type||'',
+          what:fu.what||'',
+          why:fu.why||'',
+          how:fu.how||''
+        });
+        added++;
+      });
+      saveNow(); render();
+      alert('✅ 소비자 노트 일정 가져오기 완료!\n추가: '+added+'건 / 중복 건너뜀: '+skipped+'건\n\n캘린더에서 👥 아이콘으로 확인하세요.');
+    }catch(err){
+      alert('❌ 오류: '+err.message);
+    }
+    input.value='';
+  };
+  reader.readAsText(file);
+}
 
 // ════════════════════════════════
 // DATE UTILS
