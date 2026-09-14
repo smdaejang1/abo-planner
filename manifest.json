@@ -1,6 +1,6 @@
-[planner_manifest.json](https://github.com/user-attachments/files/32214694/planner_manifest.json)
 {
   "name": "7 Habits 주간 플래너",
+}
   "short_name": "주간플래너",
   "description": "7가지 습관 기반 주간/월간 플래너",
   "start_url": "./7habits_planner_v5.html",
