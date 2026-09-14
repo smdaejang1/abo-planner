@@ -1,0 +1,18 @@
+[planner_manifest.json](https://github.com/user-attachments/files/32214694/planner_manifest.json)
+{
+  "name": "7 Habits 주간 플래너",
+  "short_name": "주간플래너",
+  "description": "7가지 습관 기반 주간/월간 플래너",
+  "start_url": "./7habits_planner_v5.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2f5496",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/smdaejang1/consumer-note/main/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
