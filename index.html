@@ -1,10 +1,14 @@
-
 <!DOCTYPE html>
 <!-- 7가지 습관 나침반 계획표 — v4 (저장 키: 7hp-v4) -->
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="주간플래너">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
 <title>7가지 습관 나침반 계획표</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -235,7 +239,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#eef3f0;color:var(--g9);pa
 .tcell.dh{outline:2px solid var(--tb)!important;outline-offset:-2px;background:var(--tp)!important;z-index:1}
 .tcell.ct{outline:2px dashed var(--am)!important;outline-offset:-2px;background:#FFFBEB!important;cursor:pointer!important}
 
-/* ── RENEWAL CHECK ── */
+
 .rchkwrap{display:flex;flex-direction:column;gap:3px}
 .rchkrow{display:grid;grid-template-columns:80px repeat(7,1fr);border:1px solid var(--brd);border-radius:7px;overflow:hidden}
 .rchklbl{background:var(--tp);padding:5px 7px;font-size:10px;font-weight:700;color:var(--td);display:flex;flex-direction:column;gap:1px;justify-content:center}
@@ -407,6 +411,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#eef3f0;color:var(--g9);pa
     <button class="btn" style="font-size:12px;padding:7px 12px" onclick="exportData()">📤 내보내기</button>
     <label class="btn" style="font-size:12px;padding:7px 12px;cursor:pointer">📥 불러오기<input type="file" accept=".json" style="display:none" onchange="importData(this)"></label>
     <label class="btn" style="font-size:12px;padding:7px 12px;cursor:pointer;background:#e8f5e9;color:#2e7d32;border:1px solid #2e7d32;">📋 관리노트 가져오기<input type="file" accept=".json" style="display:none" onchange="importManageNote(this)"></label>
+    <button class="btn" style="font-size:12px;padding:7px 12px;background:#e8f0fe;color:#2f5496;border:1px solid #2f5496;" onclick="syncConsumerNote()">🔄 소비자노트 동기화</button>
     <button class="btn" style="font-size:12px;padding:7px 12px" onclick="window.print()">🖨 인쇄</button>
   </div>
 </div>
@@ -450,12 +455,7 @@ const HOLIDAYS={
 };
 const DK=['월','화','수','목','금','토','일'];
 const HOURS=Array.from({length:19},(_,i)=>String(i+6).padStart(2,'0'));
-const RN=[
-  {id:'body',lbl:'신(身)',sub:'운동하기',ico:'🏃'},
-  {id:'mind',lbl:'심(心)',sub:'책 읽기',ico:'📖'},
-  {id:'spirit',lbl:'영(靈)',sub:'명상·영어',ico:'🧘'},
-  {id:'social',lbl:'교제·정서',sub:'관계 돌봄',ico:'🤝'},
-];
+const RN=[];
 const RNAMES=['빨','주','노','초','파','남','보'];
 const REC_TYPES={once:'한 번만',weekly:'매주',monthly:'매월',yearly:'매년'};
 
@@ -585,6 +585,120 @@ function importConsumerNoteData(data){
   });
   saveNow(); render();
   alert('소비자 노트 가져오기 완료! 추가: '+added+'건 / 중복: '+skipped+'건');
+}
+
+
+// ── 소비자노트 동기화 (localStorage 직접 읽기) ────────
+function syncConsumerNote(){
+  try{
+    // 소비자 관리 노트 localStorage 키에서 직접 읽기
+    var raw=localStorage.getItem('consumerNoteData_v1');
+    if(!raw){
+      alert('소비자 관리 노트 데이터를 찾을 수 없습니다.\n같은 기기에서 소비자 관리 노트를 먼저 실행해주세요.');
+      return;
+    }
+    var noteData=JSON.parse(raw);
+    var consumers=noteData.consumers||[];
+    if(!consumers.length){
+      alert('소비자 관리 노트에 등록된 소비자가 없습니다.');
+      return;
+    }
+
+    // 날짜 × 소비자 기준으로 통합 (1인당 1줄)
+    var dateMap={};
+    consumers.forEach(function(cc){
+      // 컨택 기록 기반
+      ['product','business','system'].forEach(function(type){
+        (cc[type]||[]).forEach(function(e){
+          if(!e.date) return;
+          var key=e.date+'__'+cc.name;
+          if(!dateMap[key]) dateMap[key]={date:e.date,consumer:cc.name,types:{}};
+          dateMap[key].types[type]=true;
+        });
+      });
+      // 만남 계획 기반
+      ((cc.plans&&cc.plans.allSchedules)||[]).forEach(function(s){
+        ['product','business','system'].forEach(function(type){
+          var what=s['what_'+type]||'';
+          var why=s['why_'+type]||'';
+          var how=s['how_'+type]||'';
+          if(!what&&!why&&!how) return;
+          var key=s.date+'__'+cc.name;
+          if(!dateMap[key]) dateMap[key]={date:s.date,consumer:cc.name,types:{}};
+          dateMap[key].types[type]=true;
+        });
+      });
+    });
+
+    // followUps 생성
+    var followUps=Object.keys(dateMap).map(function(key){
+      var item=dateMap[key];
+      var icons=[];
+      if(item.types.product)  icons.push('📦 제품');
+      if(item.types.business) icons.push('💼 사업');
+      if(item.types.system)   icons.push('🎓 시스템');
+      return {
+        date:item.date,
+        text:item.consumer+' — '+icons.join(' · '),
+        consumer:item.consumer,
+        types:Object.keys(item.types)
+      };
+    });
+
+    if(!followUps.length){
+      alert('동기화할 일정이 없습니다.');
+      return;
+    }
+
+    // 역할 찾거나 생성
+    var role=S.roles.find(function(r){ return r.name==='소비자관리'; });
+    if(!role){
+      role={id:'consumer_note_role',ci:6,name:'소비자관리',targets:[]};
+      S.roles.push(role);
+    }
+
+    var added=0, updated=0, skipped=0;
+
+    followUps.forEach(function(fu){
+      var ds=fu.date;
+      if(!ds||ds.length!==10){ skipped++; return; }
+      var m=md(ds.slice(0,7));
+      if(!m.calItems[ds]) m.calItems[ds]=[];
+
+      // B안: 같은 소비자 항목 찾기
+      var existing=m.calItems[ds].find(function(x){
+        return x.fromConsumer&&x.text.indexOf(fu.consumer+' —')===0;
+      });
+
+      if(existing){
+        // 내용이 다르면 업데이트
+        if(existing.text!==fu.text){
+          existing.text=fu.text;
+          existing.consumerType=fu.types.join(',');
+          updated++;
+        } else {
+          skipped++;
+        }
+      } else {
+        // 새로 추가
+        m.calItems[ds].push({
+          id:'cn_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+          text:fu.text,
+          roleId:role.id,
+          src:'consumer',
+          fromConsumer:true,
+          consumerType:fu.types.join(',')
+        });
+        added++;
+      }
+    });
+
+    saveNow(); render();
+    alert('✅ 소비자노트 동기화 완료!\n추가: '+added+'건 / 업데이트: '+updated+'건 / 변경없음: '+skipped+'건');
+
+  }catch(err){
+    alert('❌ 동기화 오류: '+err.message);
+  }
 }
 
 function importConsumerNote(input){
@@ -1091,12 +1205,6 @@ function upTargetText(rid,tid,v){const r=S.roles.find(x=>x.id===rid);if(r){const
 function reRoles(){document.querySelectorAll('.rc-host').forEach(el=>el.innerHTML=rolesHTML());}
 
 // renewal HTML
-function renewalHTML(){
-  return `<div style="display:flex;flex-direction:column;gap:4px">${RN.map(r=>`<div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--brd);border-radius:7px;background:#FAFFFE;font-size:11px">
-    <span style="font-size:14px">${r.ico}</span>
-    <div><div style="font-weight:700;color:var(--g7)">${r.lbl}</div><div style="font-size:9px;color:var(--g4)">${r.sub}</div></div>
-  </div>`).join('')}</div>`;
-}
 
 // ════════════════════════════════
 // RENDER MONTHLY
@@ -1155,7 +1263,7 @@ function renderMonthly(){
   document.getElementById('main').innerHTML=`<div class="sheet">
     <div class="card">
       <div class="shdr">
-        <div><div class="shdr-t">월간 계획 <em>(Monthly Schedule)</em></div><div class="shdr-s">역할별 목표 → 이달의 주제 → 심신의 단련</div></div>
+        <div><div class="shdr-t">월간 계획 <em>(Monthly Schedule)</em></div><div class="shdr-s">역할별 목표 → 이달의 주제</div></div>
         <div class="shdr-b">${fmtMk(mk)}</div>
       </div>
       <div class="panel-tabs">
@@ -1165,7 +1273,6 @@ function renderMonthly(){
       <div class="sbody">
         <div class="sleft ${mobilePanel==='right'?'hidden':''}">
           <div><div class="slbl">역할과 목표 <em>(Roles & Goals)</em></div><div class="rc-host">${rolesHTML()}</div></div>
-          <div><div class="slbl">Habit 7 — 심신의 단련 <em>(Sharpen the Saw)</em></div>${renewalHTML()}</div>
         </div>
         <div class="sright ${mobilePanel==='left'?'hidden':''}">
           <div class="msub">
@@ -2075,13 +2182,6 @@ function renderAnnual(){
 }
 
 // ════════════════════════════════
-// RENEWAL CHECK
-// ════════════════════════════════
-function togRc(ds,rid){
-  const m=md(ds.slice(0,7));if(!m.rc[ds])m.rc[ds]={};m.rc[ds][rid]=!m.rc[ds][rid];dirty();
-  const el=document.querySelector(`[onclick="togRc('${ds}','${rid}')"]`);
-  if(el){el.classList.toggle('on',!!m.rc[ds][rid]);el.textContent=m.rc[ds][rid]?'✓':'';}
-}
 
 // ════════════════════════════════
 // TAB & MONTH SWITCH
@@ -2186,6 +2286,16 @@ function buildSel(){
   for(const mk of MK_LIST){const o=document.createElement('option');o.value=mk;o.textContent=fmtMk(mk);if(mk===S.cur)o.selected=true;sel.appendChild(o);}
 }
 load();buildSel();render();
+</script>
+
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('./sw.js')
+      .then(function(reg){ console.log('SW 등록 완료'); })
+      .catch(function(err){ console.log('SW 등록 실패:', err); });
+  });
+}
 </script>
 </body>
 </html>
