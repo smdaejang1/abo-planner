@@ -1,0 +1,13 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="0; url=./7habits_planner_v5.html">
+<title>7 Habits Planner</title>
+</head>
+<body>
+<script>location.href='./7habits_planner_v5.html';</script>
+</body>
+</html>
